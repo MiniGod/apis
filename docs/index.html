@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>apis.is - docs</title>
+<link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+<style>
+  body {
+    background-color: #fdf6e3;
+    font-family: 'Open Sans',Arial,tahoma,sans-serif;
+    color: #06568F;
+    line-height: 1.5;
+    font-size: 18px;
+    font-weight: 300;
+    max-width: 860px;
+    margin: auto;
+  }
+  a {
+    color: #268bd2;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+  }
+  li {
+    background-color: #268bd2;
+    color: #fdf6e3;
+    padding: 10px 20px;
+    border-radius: 2px;
+  }
+  li > a {
+    color: #fdf6e3;
+  }
+  li > progress {
+    float: right;
+  }
+  h1, h2, h3 {
+    font-weight: 300;
+    margin: 0;
+  }
+  table {
+    width: 100%;
+  }
+  th {
+    text-align: left;
+  }
+  td:last-child,
+  th:last-child {
+    text-align: right;
+  }
+  hr {
+    border-top-style: dashed;
+  }
+</style>
+</head>
+<body>
+<Content />
+<script src="https://unpkg.com/fast-json-patch@2.0.5/dist/fast-json-patch.js"></script>
+<script type="text/javascript">
+const endpoints = [...document.querySelectorAll('li')].map(li => {
+  const popularityElement = document.createElement('progress')
+  popularityElement.value = 0
+  popularityElement.max = 1
+  popularityElement.title = 'Unknown or 0% popularity'
+  li.appendChild(popularityElement)
+
+  return {
+    path: li.querySelector('a').href
+      .replace(/^.+apis.is/, '')
+      .replace(/\/(:\w+)?$/, '')
+      ,
+    li,
+    popularityElement,
+  }
+})
+
+// one of: m1, m5, m15, count
+const metric = 'count'
+
+const updateMetrics = (data) => {
+  const endpointsWithMetrics = Object.keys(data).filter(key => key.startsWith('/') && key.length > 1)
+
+  const maxPopularity = endpointsWithMetrics.reduce((highest, path) => {
+    return path === '/metrics' ? highest : Math.max(highest, data[path].get.rate[metric])
+  }, 0)
+
+  endpointsWithMetrics.forEach(path => {
+    const endpoint = endpoints.find(e => path.startsWith(e.path))
+    if (!endpoint) return
+
+    const rate = data[path].get.rate
+
+    const popularity = rate[metric] / maxPopularity
+
+    endpoint.popularityElement.value = popularity
+    endpoint.popularityElement.title = `${(popularity * 100).toFixed(2)}% popularity`
+  })
+}
+
+const es = new EventSource('https://live.apis.is/metrics')
+
+// keeps track of metrics so server only needs to send diff
+let metrics
+
+es.addEventListener('open', () => {
+  console.log('Metrics connection: open')
+}, false)
+
+es.addEventListener('close', () => {
+  console.log('Metrics connection: close')
+}, false)
+
+es.addEventListener('error', (error) => {
+  console.error('Metrics connection: error', error)
+}, false)
+
+es.addEventListener('data', (event) => {
+  console.log('Got first data')
+  metrics = JSON.parse(event.data)
+  updateMetrics(metrics)
+}, false)
+
+es.addEventListener('patch', (data) => {
+  console.log('Got patch')
+  metrics = jsonpatch.applyPatch(metrics, JSON.parse(data.data)).newDocument
+  updateMetrics(metrics)
+}, false)
+</script>
+</body>
+</html>
